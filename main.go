@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -22,23 +23,37 @@ func main() {
 
 	var fileName = args[0]
 
-	if tagoFile, err := findTagoForFile(fileName); err != nil {
+	if tagoFiles, err := findTagosForFile(fileName); err != nil {
 		panic(err)
-	} else if len(tagoFile) > 0{
-		fmt.Printf("tagoFile : %s\n", tagoFile)
-		fileText, err := os.ReadFile(tagoFile)
-		if err != nil {
-			panic(err)
+	} else if len(tagoFiles) > 0 {
+
+		fmt.Printf("tago files\n")
+		for _, file := range tagoFiles {
+			fmt.Printf("    %s\n", file)
+		}
+		fmt.Printf("\n")
+
+		keyValue := make(map[string]string)
+
+		//for _, file := range tagoFiles {
+		for i := len(tagoFiles) - 1; i >= 0; i-- {
+			file := tagoFiles[i]
+			fileText, err := os.ReadFile(file)
+			if err != nil {
+				panic(err)
+			}
+
+			kv, err := parseTagoFile(fileText)
+			if err != nil {
+				panic(err)
+			}
+
+			for k, v := range kv {
+				keyValue[k] = v
+			}
 		}
 
-		keyValue, err := parseTagoFile(fileText)
-		if err != nil {
-			panic(err)
-		}
-
-		for k, v := range keyValue {
-			fmt.Printf("%s : %s\n", k, v)
-		}
+		printKeyValue(keyValue)
 	} else {
 		fmt.Printf("couldn't find tago file for %s\n", fileName)
 	}
@@ -67,24 +82,26 @@ func isTagoFile(path string) bool {
 }
 
 // returns empty path if it couldn't find any
-func findTagoForFile(filePath string) (string, error) {
+func findTagosForFile(filePath string) ([]string, error) {
 	{
 		// check if file even exists
 		info, err := os.Stat(filePath)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 
 		// check if file is regular
 		if !info.Mode().IsRegular() {
-			return "", fmt.Errorf("%s is not a regular file", filePath)
+			return nil, fmt.Errorf("%s is not a regular file", filePath)
 		}
 	}
+
+	var tagos []string
 
 	// get abs
 	fileAbsPath, err := filepath.Abs(filePath)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	fileDir := filepath.Dir(fileAbsPath)
@@ -93,8 +110,11 @@ func findTagoForFile(filePath string) (string, error) {
 
 	dirents, err := os.ReadDir(fileDir)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
+
+	var fileTago string
+	var rootTago string
 
 	for _, dirent := range dirents {
 		if !dirent.Type().IsRegular() {
@@ -116,12 +136,20 @@ func findTagoForFile(filePath string) (string, error) {
 
 		// if we find tago file with the same name, that is the tago file
 		if name == fileName {
-			return direntPath, nil
+			fileTago = direntPath
 		}
+
 		// instead if we root.tago file, that is the tago file
 		if name == "root" {
-			return direntPath, nil
+			rootTago = direntPath
 		}
+	}
+
+	if len(fileTago) > 0 {
+		tagos = append(tagos, fileTago)
+	}
+	if len(rootTago) > 0 {
+		tagos = append(tagos, rootTago)
 	}
 
 	curDir := fileDir
@@ -129,14 +157,15 @@ func findTagoForFile(filePath string) (string, error) {
 		prevCurDir := curDir
 		curDir = filepath.Dir(prevCurDir)
 		if curDir == prevCurDir || len(curDir) == 0 { // we have reached the top
-			return "", nil
+			return tagos, nil
 		}
 
 		dirents, err = os.ReadDir(curDir)
 		if err != nil {
-			return "", err
+			return tagos, err
 		}
 
+		foundRootTago := false
 		for _, dirent := range dirents {
 			if !dirent.Type().IsRegular() {
 				continue
@@ -151,12 +180,18 @@ func findTagoForFile(filePath string) (string, error) {
 			name, _ := getNameAndExt(dirent.Name())
 
 			if name == "root" {
-				return direntPath, nil
+				tagos = append(tagos, direntPath)
+				foundRootTago = true
+				break
 			}
+		}
+
+		if !foundRootTago {
+			return tagos, nil
 		}
 	}
 
-	return "", nil
+	return tagos, nil
 }
 
 func parseTagoFile(file []byte) (map[string]string, error) {
@@ -217,4 +252,35 @@ func parseTagoFile(file []byte) (map[string]string, error) {
 	}
 
 	return keyValue, nil
+}
+
+func printKeyValue(keyValue map[string]string) {
+	keys := make([]string, len(keyValue))
+	{
+		i := 0
+		for k := range keyValue {
+			keys[i] = k
+			i++
+		}
+	}
+
+	slices.Sort(keys)
+
+	//for k, v := range keyValue {
+	for _, k := range keys {
+		v := keyValue[k]
+		if strings.Index(v, "\n") < 0 {
+			fmt.Printf("%s: %s\n", k, v)
+		} else {
+			fmt.Printf("%s: [\n", k)
+
+			lines := strings.Split(v, "\n")
+			for _, line := range lines {
+				fmt.Printf("    %s\n", line)
+			}
+
+			fmt.Printf("]\n")
+		}
+		fmt.Printf("\n")
+	}
 }
