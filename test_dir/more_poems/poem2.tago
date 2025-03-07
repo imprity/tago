@@ -1,8 +1,9 @@
-License: CC BY-SA 4.0
+License: ["test_dir/more_poems/poem2.tago"] CC BY-SA 4.0
 
-Creator : imprity
+Creator : ["test_dir/more_poems/poem2.tago"] imprity
 
 Inspirations :  [
+    ["test_dir/more_poems/poem2.tago"]
     Robert Frost
     Emily Dickinson
     Edgar Allan Poe

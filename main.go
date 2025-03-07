@@ -155,8 +155,12 @@ func fileExistsAndRegular(path string) error {
 func findTagosForFile(filePath string) ([]string, error) {
 	filePath = filepath.Clean(filePath) // why not
 
-	if err := fileExistsAndRegular(filePath); err != nil {
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
 		return nil, err
+	}
+	if !(fileInfo.Mode().IsRegular() || fileInfo.Mode().IsDir()) {
+		return nil, fmt.Errorf("%s is not a regular file nor directory")
 	}
 
 	var tagos []string
@@ -170,9 +174,16 @@ func findTagosForFile(filePath string) ([]string, error) {
 		)
 	}
 
-	fileDir := filepath.Dir(fileAbsPath)
-	fileName, fileExt := getNameAndExt(filePath)
-	_ = fileExt
+	var fileDir, fileName, fileExt string
+
+	if fileInfo.Mode().IsRegular() {
+		fileDir = filepath.Dir(fileAbsPath)
+		fileName, fileExt = getNameAndExt(filePath)
+	}else {
+		fileDir = fileAbsPath
+		fileName = filepath.Base(filePath)
+	}
+	_=fileExt
 
 	dirents, err := os.ReadDir(fileDir)
 	if err != nil {
@@ -201,7 +212,7 @@ func findTagosForFile(filePath string) ([]string, error) {
 		name, _ := getNameAndExt(dirent.Name())
 
 		// we found tago file with the same name
-		if name == fileName {
+		if fileInfo.Mode().IsRegular() && name == fileName{
 			fileTago = direntPath
 		}
 
@@ -211,7 +222,7 @@ func findTagosForFile(filePath string) ([]string, error) {
 		}
 	}
 
-	if isTagoFile(fileAbsPath) {
+	if fileInfo.Mode().IsRegular() && isTagoFile(fileAbsPath) {
 		// if file it self is a tago file
 		// add it to tagos
 		fileTago = fileAbsPath
@@ -224,6 +235,7 @@ func findTagosForFile(filePath string) ([]string, error) {
 		tagos = append(tagos, rootTago)
 	}
 
+	// start going upward to find more tago files
 	curDir := fileDir
 	for {
 		prevCurDir := curDir
@@ -237,7 +249,6 @@ func findTagosForFile(filePath string) ([]string, error) {
 			return tagos, err
 		}
 
-		foundRootTago := false
 		for _, dirent := range dirents {
 			if !dirent.Type().IsRegular() {
 				continue
@@ -254,13 +265,8 @@ func findTagosForFile(filePath string) ([]string, error) {
 			// we found tago.tago file
 			if name == "tago" {
 				tagos = append(tagos, direntPath)
-				foundRootTago = true
 				break
 			}
-		}
-
-		if !foundRootTago {
-			return tagos, nil
 		}
 	}
 
