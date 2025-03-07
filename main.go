@@ -27,6 +27,11 @@ func init() {
 	flag.BoolVar(&FlagCheckHash, "c", false, "check file hash instead")
 }
 
+type TagoValue struct {
+	Source string
+	Value  string
+}
+
 func main() {
 	flag.Parse()
 
@@ -67,26 +72,22 @@ func TagoMain(filePath string) {
 		}
 	}
 
-	fmt.Printf("tago files:\n")
-	for _, file := range tagoFiles {
-		fmt.Printf("    %s\n", file)
-	}
 	fmt.Printf("\n")
 
 	// print key values from tago files
 	{
-		keyValue := make(map[string]string)
+		keyValue := make(map[string]TagoValue)
 		for i := len(tagoFiles) - 1; i >= 0; i-- {
-			file := tagoFiles[i]
-			fileText, err := os.ReadFile(file)
+			filePath := tagoFiles[i]
+			fileContent, err := os.ReadFile(filePath)
 			if err != nil {
-				WarnLogger.Printf("could not open %s: %s", file, err)
+				WarnLogger.Printf("could not open %s: %s", filePath, err)
 				continue
 			}
 
-			kv, err := parseTagoFile(fileText)
+			kv, err := parseTagoFile(filePath, fileContent)
 			if err != nil {
-				WarnLogger.Printf("could not parse %s: %s", file, err)
+				WarnLogger.Printf("could not parse %s: %s", filePath, err)
 				continue
 			}
 
@@ -179,11 +180,11 @@ func findTagosForFile(filePath string) ([]string, error) {
 	if fileInfo.Mode().IsRegular() {
 		fileDir = filepath.Dir(fileAbsPath)
 		fileName, fileExt = getNameAndExt(filePath)
-	}else {
+	} else {
 		fileDir = fileAbsPath
 		fileName = filepath.Base(filePath)
 	}
-	_=fileExt
+	_ = fileExt
 
 	dirents, err := os.ReadDir(fileDir)
 	if err != nil {
@@ -212,7 +213,7 @@ func findTagosForFile(filePath string) ([]string, error) {
 		name, _ := getNameAndExt(dirent.Name())
 
 		// we found tago file with the same name
-		if fileInfo.Mode().IsRegular() && name == fileName{
+		if fileInfo.Mode().IsRegular() && name == fileName {
 			fileTago = direntPath
 		}
 
@@ -273,14 +274,14 @@ func findTagosForFile(filePath string) ([]string, error) {
 	return tagos, nil
 }
 
-func parseTagoFile(file []byte) (map[string]string, error) {
-	if !utf8.Valid(file) {
+func parseTagoFile(filePath string, fileContent []byte) (map[string]TagoValue, error) {
+	if !utf8.Valid(fileContent) {
 		return nil, fmt.Errorf("file is not a valid utf8")
 	}
 
-	text := string(file)
+	text := string(fileContent)
 
-	keyValue := make(map[string]string)
+	keyValue := make(map[string]TagoValue)
 
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 
@@ -295,7 +296,10 @@ func parseTagoFile(file []byte) (map[string]string, error) {
 
 		if insideMultiline {
 			if line == "]" {
-				keyValue[multiLineKey] = multiLineValue
+				keyValue[multiLineKey] = TagoValue{
+					Source: filePath,
+					Value:  multiLineValue,
+				}
 
 				insideMultiline = false
 				multiLineKey = ""
@@ -324,7 +328,10 @@ func parseTagoFile(file []byte) (map[string]string, error) {
 					multiLineKey = key
 					multiLineValue = ""
 				} else {
-					keyValue[key] = valueLine
+					keyValue[key] = TagoValue{
+						Source: filePath,
+						Value:  valueLine,
+					}
 				}
 			}
 		}
@@ -333,7 +340,7 @@ func parseTagoFile(file []byte) (map[string]string, error) {
 	return keyValue, nil
 }
 
-func printKeyValue(keyValue map[string]string) {
+func printKeyValue(keyValue map[string]TagoValue) {
 	keys := make([]string, len(keyValue))
 	{
 		i := 0
@@ -345,21 +352,22 @@ func printKeyValue(keyValue map[string]string) {
 
 	slices.Sort(keys)
 
-	//for k, v := range keyValue {
 	for _, k := range keys {
-		v := keyValue[k]
-		if strings.Index(v, "\n") < 0 {
-			fmt.Printf("%s: %s\n", k, v)
+		value := keyValue[k].Value
+
+		if strings.Index(value, "\n") < 0 {
+			fmt.Printf("%s: %s\n", k, value)
 		} else {
 			fmt.Printf("%s: [\n", k)
 
-			lines := strings.Split(v, "\n")
+			lines := strings.Split(value, "\n")
 			for _, line := range lines {
 				fmt.Printf("    %s\n", line)
 			}
 
 			fmt.Printf("]\n")
 		}
+		fmt.Printf("    // \"%s\"\n", keyValue[k].Source)
 		fmt.Printf("\n")
 	}
 }
