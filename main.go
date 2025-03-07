@@ -308,7 +308,7 @@ func parseTagoFile(file []byte) (map[string]string, error) {
 
 			sepAt := strings.Index(line, ":")
 			if sepAt >= 0 {
-				key := strings.TrimSpace(line[0:sepAt])
+				key := strings.ToLower(strings.TrimSpace(line[0:sepAt]))
 
 				valueLine := line[sepAt+1:]
 				valueLine = strings.TrimSpace(valueLine)
