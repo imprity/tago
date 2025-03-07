@@ -2,8 +2,13 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"log"
+	"os"
+
+	"crypto/md5"
+	"crypto/sha256"
+
+	"flag"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -14,25 +19,41 @@ var ErrLogger *log.Logger = log.New(os.Stderr, "ERROR: ", log.Lshortfile)
 var WarnLogger *log.Logger = log.New(os.Stderr, "WARN: ", log.Lshortfile)
 var InfoLogger *log.Logger = log.New(os.Stdout, "INFO: ", log.Lshortfile)
 
-func printHelp() {
-	println("NOT IMPLEMENTED")
+var (
+	FlagCheckHash bool
+)
+
+func init() {
+	flag.BoolVar(&FlagCheckHash, "c", false, "check file hash instead")
 }
 
 func main() {
-	args := os.Args[1:]
+	flag.Parse()
 
+	args := flag.Args()
+
+	// if no argument is give,
+	// print help and exit
 	if len(args) <= 0 {
-		printHelp()
+		flag.Usage()
 		os.Exit(1)
 	}
 
-	var fileName = args[0]
+	var filePath = args[0]
 
-	tagoFiles, err := findTagosForFile(fileName)
+	if FlagCheckHash {
+		CheckHashMain(filePath)
+	} else {
+		TagoMain(filePath)
+	}
+}
+
+func TagoMain(filePath string) {
+	tagoFiles, err := findTagosForFile(filePath)
 
 	// if we couldn't find any tago files
 	// just exit normally
-	if len(tagoFiles) <= 0 && err == nil{
+	if len(tagoFiles) <= 0 && err == nil {
 		fmt.Printf("could not find any tago files")
 		os.Exit(0)
 	}
@@ -41,7 +62,7 @@ func main() {
 	if err != nil {
 		if len(tagoFiles) <= 0 {
 			ErrLogger.Fatalf("could not find any tago files: %s", err)
-		}else {
+		} else {
 			WarnLogger.Printf("error while finding tago files: %s", err)
 		}
 	}
@@ -59,12 +80,14 @@ func main() {
 			file := tagoFiles[i]
 			fileText, err := os.ReadFile(file)
 			if err != nil {
-				panic(err)
+				WarnLogger.Printf("could not open %s: %s", file, err)
+				continue
 			}
 
 			kv, err := parseTagoFile(fileText)
 			if err != nil {
-				panic(err)
+				WarnLogger.Printf("could not parse %s: %s", file, err)
+				continue
 			}
 
 			for k, v := range kv {
@@ -74,6 +97,21 @@ func main() {
 
 		printKeyValue(keyValue)
 	}
+}
+
+func CheckHashMain(filePath string) {
+	fileContent, err := os.ReadFile(filePath)
+	if err != nil {
+		ErrLogger.Fatal("could not open %s: %s", filePath, err)
+	}
+
+	shaSum := sha256.Sum256(fileContent)
+	md5Sum := md5.Sum(fileContent)
+
+	fmt.Printf("\n")
+	fmt.Printf("hashes:\n")
+	fmt.Printf("    sha256: %x\n", shaSum)
+	fmt.Printf("    md5   : %x\n", md5Sum)
 }
 
 func getNameAndExt(path string) (string, string) {
